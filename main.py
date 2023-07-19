@@ -6,7 +6,8 @@ import time
 import re
 from PyPDF2 import PdfReader
 import os 
-import multiprocessing
+import tkinter as tk
+from tkinter import filedialog
 
 
 def read_pdf(file_path):
@@ -260,8 +261,6 @@ def process_tables(tables):
 
 
 #UI TKINTER:
-import tkinter as tk
-from tkinter import filedialog
 
 # Add a GUI file picker
 root = tk.Tk()
@@ -276,6 +275,8 @@ file_name = os.path.splitext(os.path.basename(pdf_file))[0]
 #  "25C_DATA_Extract(1temperatureOnly).pdf"
 # "300_pages_extract.pdf"
 
+
+# target_table = "6.6.2.3 Adjacent Channel Leakage Power Ratio" 
 target_table = "6.2.2 Maximum Output Power" 
 # pdf_file = "300_pages_extract.pdf"
 # Extract name without extension
@@ -284,7 +285,7 @@ file_name = os.path.splitext(os.path.basename(pdf_file))[0]
 
 # Find target table pages
 pages = find_table_location(pdf_file, target_table)
-
+print(f"Pages with target table: {pages}")
 # Format page numbers for camelot
 page_ranges = convert_to_ranges(pages)
 print(f"Pages to read: {page_ranges}")
