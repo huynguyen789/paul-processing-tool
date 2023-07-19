@@ -1,0 +1,4 @@
+camelot_py==0.9.0
+pandas==2.0.3
+PyPDF2==2.11.1
+# PyPDF2==3.0.1
