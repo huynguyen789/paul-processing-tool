@@ -131,19 +131,13 @@ def find_target_table(tables, desired_name):
             
             # print(f"Found start of new desired table:")   
             # display(current_table)
-        elif first_cell.startswith("6.") and desired_name not in first_cell: 
-            #else: return the current table, and reset the current_table to None
-            print(f"\nSkipping a none-desired table: {first_cell}")
-            if current_table is not None:
-                # Save the current table
-                desired_tables.append(current_table)
-                #Reset, mark end of the desired table
-                current_table = None
+
         
         #if the table doesnt match the desire_format AND there is a current_table: concat this table into the current table:         
-        elif current_table is not None and table.df.iloc[0][1]  :
+        elif current_table is not None and not table.df.iloc[0][1].startswith("6."):  
             # Continuation of previous desired table
             print(f"Found continuation of previous desired table: {table.df.iloc[0]}")
+            print(f"test: {table.df.iloc[0][1]}")
             # print(f"Found continuous table, before cleaning:")   
             # display(table.df)
             #Clean table before concat:
@@ -154,7 +148,15 @@ def find_target_table(tables, desired_name):
 
             # print(f"Table after concat:")
             # display(current_table)
-        
+            
+        else: 
+            #else: return the current table, and reset the current_table to None
+            print(f"\nSkipping a none-desired table: {first_cell}")
+            if current_table is not None:
+                # Save the current table
+                desired_tables.append(current_table)
+                #Reset, mark end of the desired table
+                current_table = None       
             
     return desired_tables
 
