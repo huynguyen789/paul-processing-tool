@@ -28,9 +28,21 @@ def clean_table(table):
         # print(f'Table now has {table.shape[1]} columns.')
     return table
 
-# Find target_table location in the PDF file: 
-# return a list of page numbers
 def find_table_location(pdf_file, target_table):
+    """
+    Searches through a PDF file to find the page numbers 
+    containing the specified table.
+
+    Params:
+    pdf_file: Path to PDF file
+    target_table: Name of table to search for
+
+    Returns:
+    A list of page numbers where the target table is found.
+    Includes multi-page tables.
+
+    """
+    
     print(f"Searching for table: {target_table}")
     
     reader = PdfReader(pdf_file)
@@ -39,7 +51,8 @@ def find_table_location(pdf_file, target_table):
 
     for page_num in range(len(reader.pages)):
 
-        print(f"Searching page {page_num} out of {len(reader.pages)}")
+        # Search each page's text for target table
+        print(f"Searching page {page_num} out of {len(reader.pages)-1}")
         
         page = reader.pages[page_num]
         text = page.extract_text()
@@ -48,22 +61,20 @@ def find_table_location(pdf_file, target_table):
             print(f"Found table on page {page_num}")
             pages_with_table.append(page_num)
 
-            # Check for multi-page
-            if page_num < len(reader.pages)-2:
+            # Check for multi-page table
+            if page_num < len(reader.pages):
 
-                # Get page_num+2 
-                next_page = reader.pages[page_num+2]  
+                # If next page has numeric prefix, add it 
+                next_page = reader.pages[page_num+1]  
                 next_text = next_page.extract_text()
 
                 if re.search(r'\d+\.\d+\.\d+', next_text):
                     pages_with_table.append(page_num + 2)
 
-            # Add extra page    
-            if pages_with_table:
-                pages_with_table.append(pages_with_table[-1] + 2)
+            # # Add offset for next table  
+            # if pages_with_table:
+            #     pages_with_table.append(pages_with_table[-1] + 2)
 
-    # print(f"Table pages found: {pages_with_table}")
-                
     return pages_with_table
 
 def convert_to_ranges(numbers):
@@ -102,51 +113,6 @@ def display_processed_tables(tables):
         print(f"Table {i + 1}")
         display(df)
 
-def extract_band(tables):
-    print(f"Extracting Band info...")
-    for table in tables:
-        line2 = table.iloc[0,0]
-        if 'Band' in line2:
-            band_info = line2.split(' ')
-            for word in band_info:
-                if word.startswith('Band'):
-                    band_num = word[4:]  # Extract everything after "Band"
-                    table.insert(1, 'Band', band_num)
-                    break
-            else:
-                print(f"No 'Band' keyword in line: {line2}")
-    return tables
-
-def extract_info(tables):
-    print(f"Extracting Testname, ULCH, BW, MOD, RD info...")
-    for i, table in enumerate(tables):
-        # Define patterns
-        testname_pattern = r"(.*):@"
-        ulch_pattern = r"ULCH: (\d+),"
-        bw_pattern = r"BW: ([\d\.]+ MHz)"
-        mod_pattern = r"UL_MOD_RB: ([^,]+),"
-        rd_pattern = r"UL_MOD_RB: [^,]+, (.*)"
-
-        # Extract info
-        table['Testname'] = table.iloc[:,0].str.extract(testname_pattern)
-        table['ULCH'] = table.iloc[:,0].str.extract(ulch_pattern)
-        table['BW'] = table.iloc[:,0].str.extract(bw_pattern)
-        table['MOD'] = table.iloc[:,0].str.extract(mod_pattern)
-        table['RD'] = table.iloc[:,0].str.extract(rd_pattern)
-
-        # Drop the first column
-        table.drop(table.columns[0], axis=1, inplace=True)
-
-        # Reorganize the columns
-        print(f"Reorganizing columns...")
-        new_column_order = ['Testname', 'Band', 'ULCH', 'BW', 'MOD', 'RD', 'Limit Low', 'Limit High', 'Measured', 'Unit', 'Status']
-        table = table.reindex(columns=new_column_order)
-
-        # Replace the table in the list with the cleaned and reorganized table
-        tables[i] = table
-        
-    return tables    
-
 def find_target_table(tables, desired_name):
     
     current_table = None
@@ -161,13 +127,13 @@ def find_target_table(tables, desired_name):
             # Found start of new desired table
             
             if current_table is None:
-                current_table = table
-            current_table = table.df.copy()
+                current_table = table.df.copy()
+            
             # print(f"Found start of new desired table:")   
             # display(current_table)
         elif first_cell.startswith("6.") and desired_name not in first_cell: 
             #else: return the current table, and reset the current_table to None
-            # print(f"\nSkipping a none-desired table: {first_cell}")
+            print(f"\nSkipping a none-desired table: {first_cell}")
             if current_table is not None:
                 # Save the current table
                 desired_tables.append(current_table)
@@ -175,9 +141,9 @@ def find_target_table(tables, desired_name):
                 current_table = None
         
         #if the table doesnt match the desire_format AND there is a current_table: concat this table into the current table:         
-        elif current_table is not None:
+        elif current_table is not None and table.df.iloc[0][1]  :
             # Continuation of previous desired table
-            # print(f"Found continuation of previous desired table: {table.df.iloc[0,0]}")
+            print(f"Found continuation of previous desired table: {table.df.iloc[0]}")
             # print(f"Found continuous table, before cleaning:")   
             # display(table.df)
             #Clean table before concat:
@@ -327,7 +293,7 @@ total_ranges = len(page_ranges)
 
 for i, page_range in enumerate(page_ranges):
     
-    print(f"\nProcessing page range {i+1}/{total_ranges}...")
+    print(f"\nProcessing {i+1}/{total_ranges}: {page_range}")
     # Calculate the estimate time remaining based on the progress so far
     progress = i / total_ranges
     time_remaining = (total_ranges - i) * 9 / 60
@@ -358,23 +324,28 @@ for i, page_range in enumerate(page_ranges):
 
 
 # Concatenate all the dataframes in the list into a single dataframe
-all_tables = pd.concat(clean_tables, ignore_index=True)
-display(all_tables.head(10)) # Display the first few rows of the resulting dataframe
+if not clean_tables:
+    print("No tables extracted")
+else: 
+    all_tables = pd.concat(clean_tables, ignore_index=True)
+    display(all_tables.head(10)) # Display the first few rows of the resulting dataframe
+    # Save to Excel using file name
+    excel_file = f"final_{file_name}.xlsx" 
+    all_tables.to_excel(excel_file, index=False)
 
-# Save to Excel using file name
-excel_file = f"final_{file_name}.xlsx" 
-all_tables.to_excel(excel_file, index=False)
+    #Auto open folder:
+    import subprocess
+    import platform
+    folder_path = os.path.dirname(excel_file)
 
-#Auto open folder:
-import subprocess
-import platform
-folder_path = os.path.dirname(excel_file)
+    if platform.system() == 'Windows':
+        os.startfile(folder_path)
 
-if platform.system() == 'Windows':
-    os.startfile(folder_path)
+    elif platform.system() == 'Darwin': 
+        subprocess.Popen(['open', folder_path])
 
-elif platform.system() == 'Darwin': 
-    subprocess.Popen(['open', folder_path])
+    else:
+        subprocess.Popen(['xdg-open', folder_path])
+        
 
-else:
-    subprocess.Popen(['xdg-open', folder_path])
+
