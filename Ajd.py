@@ -216,7 +216,7 @@ def process_tables(tables):
         # display(table)
         
         # Fix rows that are split across pages
-        # print(f"Fixing rows that are split across pages...")
+        print(f"Fixing rows that are split across pages...")
         for i in range(len(table)-1):
             # Check if the row should be joined with the preceding row
             # print(f"index {i}: {table.iloc[i, 0]}")
@@ -312,6 +312,7 @@ def process_tables(tables):
         processed_tables.append(table)
         
         
+        
     return processed_tables
 
 def handle_special_case(current_table):
@@ -363,7 +364,7 @@ def concatenate_tables(clean_tables, target_table, pdf_file):
         #Extract table name:
         table_name = target_table.split()[1] 
         # Save to Excel using file name
-        excel_file = f"{table_name}_{file_name}.xlsx"
+        excel_file = f"MUL_{table_name}_{file_name}.xlsx"
         all_tables.to_excel(excel_file, index=False)
 
         # Auto open folder:
@@ -383,11 +384,15 @@ def process_page_range(pdf_file, target_table, page_range):
     # Read all tables from pdf
     start_time = time.time()
     long_tables = camelot.read_pdf(pdf_file, pages=page_range, backend="poppler")
+    if page_range == '75-92':
+        print(f"Long tables after read in: {len(long_tables)}")
+        # display_tables(long_tables)
     end_time = time.time()
     print(f"Time taken to load table: {end_time - start_time:.2f} seconds")
     
     # Find and concatenate target tables:
     desire_tables, rows_before_processing = find_target_table(long_tables, target_table)
+    
     
     # Process/clean tables:
     start_time = time.time()
@@ -398,6 +403,8 @@ def process_page_range(pdf_file, target_table, page_range):
     # Check if processed_table is not empty and contains DataFrames
     if processed_table and all(isinstance(table, pd.DataFrame) for table in processed_table):
         processed_table_df = pd.concat(processed_table, ignore_index=True)
+        #print number of tables concatenated:
+        print(f"Concatenated {len(processed_table_df)} tables")
     else:
         print("No tables to concatenate.")
         processed_table_df = pd.DataFrame()  # Return an empty DataFrame
@@ -441,7 +448,8 @@ def run(pdf_file, target_table):
     concatenate_tables(clean_tables, target_table, pdf_file)
     end_time = time.time()
     print(f"Total run time: {end_time - start_time:.2f} seconds")
-    
+    print(f"Found {len(page_ranges)} tables")
+    print(page_ranges)
     # display(clean_tables)
 
       
@@ -453,9 +461,11 @@ long_file = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/22k.pdf"
 med_file = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/4436pages.pdf"
 shortFile = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/6.6.2.3 500 pages.pdf"
 
+
 #Set up
 target_table = adjacent_table
-pdf_file = long_file
+new25c = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/LTE_3GPP_v15_r8_FDD_FORD_All_TEMPS_TCU2_5_ROW_012023_5GSIM_AT_2023-06-28_16-27-57_188_TEMP25C.pdf"
+pdf_file = new25c
 
 
 # pdf_file = select_file()
