@@ -72,6 +72,8 @@ def find_table_location(pdf_file, target_table):
 
     pages_with_table = []
     cont_table = False
+    
+    
     for page_num in range(len(reader.pages)):
 
         # Search each page's text for target table
@@ -79,6 +81,17 @@ def find_table_location(pdf_file, target_table):
         
         page = reader.pages[page_num]
         text = page.extract_text()
+        
+        #CHECK IF PAGE IS EMPTY
+        page_is_empty = False
+        # The header is the first two lines of the page
+        header = '\n'.join(text.split('\n')[:2])
+        # The footer is the last two lines of the page
+        footer = '\n'.join(text.split('\n')[-2:])
+        # Check if the page is empty
+        if not text.strip() or not text.strip(header).strip(footer):
+            page_is_empty = True
+            print(f"Empty page: {page_num}")
         
         # If target table is found, add the page number to the list, start a continuous table
         if target_table in text:
@@ -93,7 +106,7 @@ def find_table_location(pdf_file, target_table):
             else:
                 print(f"Found a false positive on page {page_num+1}")
         #elif next page has 6.x.x.x pattern, end of continuous table, add the page number to the list
-        elif (re.search(r'\d+\.\d+\.\d+', text) or "Resource Block" in text) and cont_table == True:
+        elif (re.search(r'\d+\.\d+\.\d+', text) or "Resource Block" in text or page_is_empty==True) and cont_table == True:
             #Check if end of pdf file:
             if page_num == len(reader.pages)-1:
                 print(f"End of continuous table on page {page_num}")
@@ -131,12 +144,17 @@ def find_target_table(tables, desired_name):
     desired_tables = []
     rows_before_process = 0
     special_case = False
+
     #Run through table_list
-    for table in tables:
+    for i, table in tables:
+        print(f"\nTable {i+1}")
+        display(table.df.head(3))
         first_cell = table.df.iloc[0,0].split('\n')[0]
         # print(f"\nChecking table: {first_cell}")
+        first_row = table.df.iloc[0]
+        all_text_first_row = " ".join([str(cell) for cell in first_row]).strip()
         #If the cell in first row, first column has the desire format "6.x.x.x" AND the desire_name: Start a new table
-        if first_cell.startswith("6.") and desired_name in first_cell:
+        if all_text_first_row.startswith("6.") and desired_name in all_text_first_row:
             # Found start of new desired table
             # print(f"Found start of new desired table:{first_cell}") 
             
@@ -145,21 +163,26 @@ def find_target_table(tables, desired_name):
                 rows_before_process = current_table.shape[0]-2
                 
                 # Check & handle special case:
-                if current_table.shape[1] == 1:
+                if table.df.shape[1] == 1:
                     print(f"Special case detected: {current_table.shape}")
                     # camelot.plot(table,kind='contour').show()
                     # camelot.plot(table,kind='joint').show()
-                    
                     special_case = True
+                elif current_table.shape[1] == 7:
+                        print("Special case 7 columns. Dropped empty columns 0")
+                        current_table.drop([0], axis=1, inplace=True)
+                        #Reset the column names
+                        current_table.columns = range(current_table.shape[1])    
+                    
                 #     # Handle the special case
                 #     current_table = handle_special_case(current_table)
                     
-            # print(f"Found start of new desired table:")   
-            # display(current_table)
+                print(f"Found start of new desired table:")   
+                # display(current_table.head())
 
         
         #if the table doesnt match the desire_format AND there is a current_table: concat this table into the current table:         
-        elif current_table is not None and not table.df.iloc[0][1].startswith("6.") and not table.df.iloc[0][0].startswith("6.") :  
+        elif current_table is not None and not all_text_first_row.startswith("6.") :  
             # Continuation of previous desired table
             # print(f"Found continuation of previous desired table: {table.df.iloc[0][1]}")
             # print(f"test: {table.df.iloc[0][1]}")
@@ -209,11 +232,11 @@ def process_tables(tables):
     
     for i, table in enumerate(tables):
         # print(f"\nProcessing table {i+1}...")
-        
+        target_table = '"6.6.2.3 Adjacent Channel Leakage Power Ratio"'
         # Reset the index
         table = table.reset_index(drop=True)
-        # print(f"Table before processing:")
-        # display(table)
+        print(f"Table before processing:")
+        display(table.head())
         
         # Fix rows that are split across pages
         print(f"Fixing rows that are split across pages...")
@@ -229,30 +252,29 @@ def process_tables(tables):
         # print(f"Table after joining rows:{table}")
     
         # Split the first cell of the first row and use it as column headers
-        first_row = table.iloc[0, 0]
-        headers = first_row.split('\n')  
-        # print(f"First row: {first_row}")
+        headers = [target_table, 'Limit Low', 'Limit High', 'Measured', 'Unit', 'Status']
         # print(f"Headers: {headers}")
-        # headers.append("MissingHeader")
         table.columns = headers
         
         # Extract the table name from the first row
-        table_name = table.iloc[0, 0].split('\n')[0]
+        table_name = target_table
 
         
         # Extract Band info from column 2
         # print(f"Extracting Band info...")
-        line2 = table.iloc[1,0]
-        # print(f"line2: {line2}")
+        line1 = table.iloc[0, 0]
+        line2 = table.iloc[1, 0]
         if 'Band' in line2:
             band_info = line2.split(' ')
-            for word in band_info:
-                if word.startswith('Band'):
-                    band_num = word[4:]  # Extract everything after "Band"
-                    table.insert(1, 'Band', band_num)
-                    break
-            else:
-                print(f"No 'Band' keyword in line: {line2}")
+        elif 'Band' in line1:
+            band_info = line1.split(' ')
+        else:
+            return table
+        for word in band_info:
+            if word.startswith('Band'):
+                band_num = word[4:]
+                table.insert(1, 'Band', band_num)
+                break
          
 
         # print("Table after header:")
@@ -360,9 +382,20 @@ def concatenate_tables(clean_tables, target_table, pdf_file):
         return pd.DataFrame()
     else:
         all_tables = pd.concat(clean_tables, ignore_index=True)
+        table_name = target_table.split()[1]
         display(all_tables.head(10)) # Display the first few rows of the resulting dataframe
         #Extract table name:
         table_name = target_table.split()[1] 
+        
+        # Add 2 new column
+        # Extract temperature 
+        filename = os.path.basename(pdf_file) 
+        temp = re.search(r'_TEMPHERE(\S+)\.', filename).group(1)
+        all_tables['Temperature'] = temp
+            # Extract PDF filename 
+        pdf_name = os.path.basename(pdf_file)
+        all_tables['PDF Name'] = pdf_name
+        
         # Save to Excel using file name
         excel_file = f"MUL_{table_name}_{file_name}.xlsx"
         all_tables.to_excel(excel_file, index=False)
@@ -384,8 +417,6 @@ def process_page_range(pdf_file, target_table, page_range):
     # Read all tables from pdf
     start_time = time.time()
     long_tables = camelot.read_pdf(pdf_file, pages=page_range, backend="poppler")
-    if page_range == '75-92':
-        print(f"Long tables after read in: {len(long_tables)}")
         # display_tables(long_tables)
     end_time = time.time()
     print(f"Time taken to load table: {end_time - start_time:.2f} seconds")
@@ -445,12 +476,17 @@ def run(pdf_file, target_table):
         # Run the new function in parallel on the list of page ranges
         clean_tables = p.map(func, page_ranges)
         
-    concatenate_tables(clean_tables, target_table, pdf_file)
+    final_df = concatenate_tables(clean_tables, target_table, pdf_file)
+    
     end_time = time.time()
     print(f"Total run time: {end_time - start_time:.2f} seconds")
     print(f"Found {len(page_ranges)} tables")
     print(page_ranges)
     # display(clean_tables)
+    
+    return final_df
+    
+
 
       
 
@@ -460,15 +496,49 @@ adjacent_table = "6.6.2.3 Adjacent Channel Leakage Power Ratio"
 long_file = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/22k.pdf"
 med_file = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/4436pages.pdf"
 shortFile = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/6.6.2.3 500 pages.pdf"
-
-
+file_55c = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/LTE_3GPP_v15_r8_FDD_FORD_All_TEMPS_TCU2_5_ROW_012023_5GSIM_AT_2023-06-28_16-27-57_188_TEMPHERE55C.pdf"
+file_75c = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/LTE_3GPP_v15_r8_FDD_FORD_All_TEMPS_TCU2_5_ROW_012023_5GSIM_AT_2023-06-28_16-27-57_188_TEMPHERE75C.pdf"
 #Set up
-target_table = adjacent_table
+target_table = maximum_table
 new25c = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/LTE_3GPP_v15_r8_FDD_FORD_All_TEMPS_TCU2_5_ROW_012023_5GSIM_AT_2023-06-28_16-27-57_188_TEMP25C.pdf"
-pdf_file = new25c
+pdf_file = file_55c
 
 
 # pdf_file = select_file()
 if __name__ == '__main__':
+    target_table = maximum_table
+    
     multiprocessing.freeze_support()  # Only required if you plan to build an executable. Can be removed otherwise.
-    run(pdf_file, target_table)
+    
+    #User select multiple files:
+    root = tk.Tk()
+    root.withdraw()
+    filepaths = filedialog.askopenfilenames()
+       
+    # Usage:
+    if len(filepaths) == 1:
+        # Single file selected
+        final_df = run(filepaths[0], target_table)
+         
+
+    else:
+        # Multiple files selected
+        all_tables = []
+        for filepath in filepaths:
+            df = run(filepaths[0], target_table)
+            all_tables.append(df)  # Appending `df` instead of `tables`
+        
+        # Concatenate results:
+        final_df = pd.concat(all_tables, ignore_index=True)
+     
+    # Save to Excel
+    excel_file = "Final_Table_{target_table}.xlsx"
+    final_df.to_excel(excel_file, index=False)  
+    
+    # Open file
+    if platform.system() == 'Windows':
+        os.startfile(excel_file)
+    elif platform.system() == 'Darwin':
+        subprocess.Popen(['open', excel_file])
+    else:
+        subprocess.Popen(['xdg-open', excel_file])
