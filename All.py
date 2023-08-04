@@ -70,62 +70,71 @@ def display_processed_tables(tables):
 
 def find_table_location(pdf_file, target_table):
     print(f"Searching for table: {target_table}")
-    
+
     reader = PdfReader(pdf_file)
 
     pages_with_table = []
     cont_table = False
-    
+    page_is_empty = False
     
     for page_num in range(len(reader.pages)):
-
         #print out page number after 1000 pages:
         if page_num % 1000 == 0:
-            print(f"***Searching page {page_num+1} out of {len(reader.pages)}")
+            print(f"Searching page {page_num+1} out of {len(reader.pages)}")
         
+        #Extract text from page:
         page = reader.pages[page_num]
         text = page.extract_text()
         
-        #CHECK IF PAGE IS EMPTY
-        page_is_empty = False
-        # The header is the first two lines of the page
-        header = '\n'.join(text.split('\n')[:2])
-        # The footer is the last two lines of the page
-        footer = '\n'.join(text.split('\n')[-2:])
-        # Check if the page is empty
-        if not text.strip() or not text.strip(header).strip(footer):
-            page_is_empty = True
-            print(f"Empty page: {page_num}")
         
-        # If target table is found, add the page number to the list, start a continuous table
-        if target_table in text and cont_table == False:
+        #Found start of target table:
+        if target_table in text:  
             target_index = text.index(target_table)
-            # print(f'target index: {target_index}')
-            # print(f"Content : {text[target_index:target_index+60]}")
+            #Check, find start of target table:
             if "Limit Low" in text[target_index:target_index+56]:
-                table_name = re.search(target_table, text).group(0)
-                print(f"***{page_num+1}: Start new target table '{text[target_index:target_index+56]}'  ")
+                print(f"Start new target table on page {page_num+1}")
                 cont_table = True
                 pages_with_table.append(page_num+1)
             else:
                 print(f"Found a false positive on page {page_num+1}")
-    
-        #elif next page has 6.x.x.x pattern, end of continuous table, add the page number to the list
-        elif (re.search(r'\d+\.\d+\.\d+', text) or "Resource Block" in text or page_is_empty==True) and cont_table == True:
-            #Check if end of pdf file:
-            if page_num == len(reader.pages)-1:
-                print(f"***{page_num}:End of continuous table on page")
-                cont_table = False
-                pages_with_table.append(page_num)
-            else:
-                print(f"***{page_num}: End of continuous table on page")
-                cont_table = False
-                pages_with_table.append(page_num)
+                
+        #Continuing table end if Cont_table is true AND:
+        elif cont_table == True:
             
+            # #CHECK IF PAGE IS EMPTY
+            # # The header is the first two lines of the page
+            # header = '\n'.join(text.split('\n')[:2])
+            # # The footer is the last two lines of the page
+            # footer = '\n'.join(text.split('\n')[-2:])
+            # # Check if the page is empty
+            # if not text.strip() or not text.strip(header).strip(footer):
+            #     page_is_empty = True
+            #     print(f"Empty page: {page_num}")
+    
+            #1: found the 6.x.x.x pattern
+            #2: found the Resource Block pattern
+            #3: empty page: cant find a good solution yet
+            #4: last pdf page
+            if page_num == len(reader.pages)-1: #4: last pdf page
+                print(f"End of table on page {page_num+1}, last pdf page.")
+                cont_table = False
+                pages_with_table.append(page_num+1)
+                
+            elif "Limit Low" in text  :  #1: found the 6.x.x.x pattern re.search(r'\d+\.\d+\.\d+', text)
+                print(f"End of table on page {page_num+1}. (Limit Low in text)")
+                # print(f"Text: {text}")
+                cont_table = False
+                pages_with_table.append(page_num+1)  
+                    
+            elif "Resource Block" in text:  #2: found the Resource Block pattern, get last page
+                print(f"End of table on page {page_num}.  Resource Block")
+                cont_table = False
+                pages_with_table.append(page_num) 
+                            
+        #If none of the above, continue searching
         else:
-            # print(f"Continuous table on page {page_num}")
             pass
-
+            
     return pages_with_table
 
 def convert_to_ranges(numbers):
@@ -477,7 +486,7 @@ def run(pdf_file, target_table):
             page_ranges = eval(file.read())
     else:
         # Find target table pages location:
-        pages = find_and_concat_target_table(pdf_file, target_table)
+        pages = find_table_location(pdf_file, target_table)
 
         # Format page numbers for camelot
         page_ranges = convert_to_ranges(pages)
