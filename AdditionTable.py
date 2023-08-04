@@ -1,3 +1,5 @@
+
+
 import camelot
 import pandas as pd
 import numpy as np
@@ -55,6 +57,14 @@ def display_tables(tables):
         print(f"\nTable {table_number}")
         display(table.df)
 
+def display_table(table):
+    # Set the max column width to a high number (e.g., 1000) to display long contents
+    pd.set_option('display.max_colwidth', 1000)
+    # Display the table
+    display(table.head())
+    
+
+    
 def display_processed_tables(tables):
     # Set the max column width to a high number (e.g., 1000) to display long contents
     pd.set_option('display.max_colwidth', 1000)
@@ -76,8 +86,9 @@ def find_table_location(pdf_file, target_table):
     
     for page_num in range(len(reader.pages)):
 
-        # Search each page's text for target table
-        print(f"Searching page {page_num+1} out of {len(reader.pages)}")
+        #print out page number after 1000 pages:
+        if page_num % 1000 == 0:
+            print(f"***Searching page {page_num+1} out of {len(reader.pages)+1}")
         
         page = reader.pages[page_num]
         text = page.extract_text()
@@ -94,26 +105,50 @@ def find_table_location(pdf_file, target_table):
             print(f"Empty page: {page_num}")
         
         # If target table is found, add the page number to the list, start a continuous table
-        if target_table in text:
+        if target_table in text and cont_table == False:
             target_index = text.index(target_table)
             # print(f'target index: {target_index}')
             # print(f"Content : {text[target_index:target_index+60]}")
             if "Limit Low" in text[target_index:target_index+56]:
                 table_name = re.search(target_table, text).group(0)
-                print(f"Start new target table '{text[target_index:target_index+56]}' on page {page_num+1}")
+                print(f"***{page_num+1}: Start new target table  ")
                 cont_table = True
                 pages_with_table.append(page_num+1)
             else:
                 print(f"Found a false positive on page {page_num+1}")
+                
+            #Special case: Look at head 1 page, if found another target_table, end continuous table, add page number to list:
+            next_page_num = page_num + 1
+            if next_page_num < len(reader.pages):
+                next_page = reader.pages[next_page_num]
+                next_text = next_page.extract_text()
+                
+                if target_table in next_text and cont_table==True:
+                    print(f"***Special case: target table back to back.")
+                    #Check if end of pdf file, add current page:
+                    if next_page_num == len(reader.pages)-1:
+                        print(f"{next_page_num}: End of continuous table on page")
+                        cont_table = False
+                        pages_with_table.append(next_page_num)
+                    else: #Add next page
+                        next_page_num = next_page_num + 1 #pdf read from 0, and camelot read from 1                       
+                        print(f"{next_page_num}: End of continuous table on page")
+                        cont_table = False
+                        pages_with_table.append(next_page_num)
+                    
+            else:
+                pass          
+                            
         #elif next page has 6.x.x.x pattern, end of continuous table, add the page number to the list
         elif (re.search(r'\d+\.\d+\.\d+', text) or "Resource Block" in text or page_is_empty==True) and cont_table == True:
-            #Check if end of pdf file:
+            #Check if end of pdf file, append current page:
             if page_num == len(reader.pages)-1:
-                print(f"End of continuous table on page {page_num}")
+                print(f"{page_num}:End of continuous table on page")
                 cont_table = False
                 pages_with_table.append(page_num)
-            else:
-                print(f"End of continuous table on page {page_num}")
+            else: #append next page
+                page_num = page_num + 1 #pdf read from 0, and camelot read from 1
+                print(f"{page_num}: End of continuous table on page")
                 cont_table = False
                 pages_with_table.append(page_num)
             
@@ -146,18 +181,22 @@ def find_target_table(tables, desired_name):
     special_case = False
 
     #Run through table_list
-    for i, table in tables:
-        print(f"\nTable {i+1}")
-        display(table.df.head(3))
+    for table in tables:
+
         first_cell = table.df.iloc[0,0].split('\n')[0]
         # print(f"\nChecking table: {first_cell}")
         first_row = table.df.iloc[0]
         all_text_first_row = " ".join([str(cell) for cell in first_row]).strip()
+        
+        # print(f"\nChecking table: {all_text_first_row}")
+        # display(table.df.head(3))
+        
         #If the cell in first row, first column has the desire format "6.x.x.x" AND the desire_name: Start a new table
         if all_text_first_row.startswith("6.") and desired_name in all_text_first_row:
             # Found start of new desired table
-            # print(f"Found start of new desired table:{first_cell}") 
-            
+            print(f"\nFound start of new desired table:{all_text_first_row}") 
+            pd.set_option('display.max_colwidth', 1000)
+            display(table.df.head(3))
             if current_table is None:
                 current_table = table.df.copy()
                 rows_before_process = current_table.shape[0]-2
@@ -166,8 +205,9 @@ def find_target_table(tables, desired_name):
                 if table.df.shape[1] == 1:
                     print(f"Special case detected: {current_table.shape}")
                     # camelot.plot(table,kind='contour').show()
-                    # camelot.plot(table,kind='joint').show()
+                    camelot.plot(table,kind='joint').show()
                     special_case = True
+                    display(current_table.df.head(3))
                 elif current_table.shape[1] == 7:
                         print("Special case 7 columns. Dropped empty columns 0")
                         current_table.drop([0], axis=1, inplace=True)
@@ -177,7 +217,7 @@ def find_target_table(tables, desired_name):
                 #     # Handle the special case
                 #     current_table = handle_special_case(current_table)
                     
-                print(f"Found start of new desired table:")   
+                # print(f"Found start of new desired table:")   
                 # display(current_table.head())
 
         
@@ -187,7 +227,7 @@ def find_target_table(tables, desired_name):
             # print(f"Found continuation of previous desired table: {table.df.iloc[0][1]}")
             # print(f"test: {table.df.iloc[0][1]}")
             # print(f"Found continuous table, before cleaning:")   
-            # display(table.df)
+            display(table.df.head(3))
             #Clean table before concat:
             table.df = clean_table(table.df)
             # print(f"Continuous table after cleaning:")   
@@ -226,16 +266,17 @@ def find_target_table(tables, desired_name):
         # print(f"Rows before processing: {rows_before_process}")
     return desired_tables, rows_before_process
 
-def process_tables(tables):  
+def process_tables(tables, target_table):  
 
     processed_tables = []
     
     for i, table in enumerate(tables):
         # print(f"\nProcessing table {i+1}...")
-        target_table = '"6.6.2.3 Adjacent Channel Leakage Power Ratio"'
+      
         # Reset the index
         table = table.reset_index(drop=True)
         print(f"Table before processing:")
+        pd.set_option('display.max_colwidth', 1000)
         display(table.head())
         
         # Fix rows that are split across pages
@@ -277,10 +318,6 @@ def process_tables(tables):
                 break
          
 
-        # print("Table after header:")
-        # display(table)
- 
-  
         # Extract Testname, ULCH, BW, MOD, RD info
         # print(f"Extracting Testname, ULCH, BW, MOD, RD info...")
         # Define patterns
@@ -297,13 +334,14 @@ def process_tables(tables):
         table['MOD'] = table.iloc[:,0].str.extract(mod_pattern)
         table['RD'] = table.iloc[:,0].str.extract(rd_pattern)
         
-        # print(f"Table before split Unit column:")
-        # display(table)
+        print(f"Table before split Unit column:")
+        display_table(table)
    
         # Split 'Measured' and 'Unit' columns 
         # Create a temporary DataFrame for the split results
         split_df = table['Unit'].str.split(expand=True)
-
+        print(f"Split df head: {split_df.head()}")
+        
         # Assign the split results to 'Measured' and 'Unit' only where there are values
         table.loc[split_df[0].notna(), 'Measured'] = split_df.loc[split_df[0].notna(), 0]
         table.loc[split_df[1].notna(), 'Unit'] = split_df.loc[split_df[1].notna(), 1]
@@ -343,6 +381,7 @@ def handle_special_case(current_table):
     Table only has one column.
     Split the information in the cell into different columns.
     """
+
     # Loop through all the rows in the current table
     for row_index in range(current_table.shape[0]):
 
@@ -387,12 +426,17 @@ def concatenate_tables(clean_tables, target_table, pdf_file):
         #Extract table name:
         table_name = target_table.split()[1] 
         
+        
         # Add 2 new column
         # Extract temperature 
         filename = os.path.basename(pdf_file) 
-        temp = re.search(r'_TEMPHERE(\S+)\.', filename).group(1)
-        all_tables['Temperature'] = temp
-            # Extract PDF filename 
+        try:
+            temp = re.search(r'_TEMPHERE(\S+)\.', filename).group(1)
+            all_tables['Temperature'] = temp
+        except AttributeError as e: 
+            print(f"No temperature info found in filename: {filename}")
+            
+        # Extract PDF filename 
         pdf_name = os.path.basename(pdf_file)
         all_tables['PDF Name'] = pdf_name
         
@@ -400,14 +444,14 @@ def concatenate_tables(clean_tables, target_table, pdf_file):
         excel_file = f"MUL_{table_name}_{file_name}.xlsx"
         all_tables.to_excel(excel_file, index=False)
 
-        # Auto open folder:
-        folder_path = os.path.abspath(os.path.dirname(excel_file))
-        if platform.system() == 'Windows':
-            os.startfile(folder_path)
-        elif platform.system() == 'Darwin': 
-            subprocess.Popen(['open', folder_path])
-        else:
-            subprocess.Popen(['xdg-open', folder_path])
+        # # Auto open folder:
+        # folder_path = os.path.abspath(os.path.dirname(excel_file))
+        # if platform.system() == 'Windows':
+        #     os.startfile(folder_path)
+        # elif platform.system() == 'Darwin': 
+        #     subprocess.Popen(['open', folder_path])
+        # else:
+        #     subprocess.Popen(['xdg-open', folder_path])
 
         return all_tables
 
@@ -427,7 +471,7 @@ def process_page_range(pdf_file, target_table, page_range):
     
     # Process/clean tables:
     start_time = time.time()
-    processed_table = process_tables(desire_tables)
+    processed_table = process_tables(desire_tables, target_table)
     end_time = time.time()
     print(f"Time taken to process tables: {end_time - start_time:.2f} seconds")
     
@@ -493,6 +537,8 @@ def run(pdf_file, target_table):
 #options
 maximum_table = "6.2.2 Maximum Output Power" 
 adjacent_table = "6.6.2.3 Adjacent Channel Leakage Power Ratio" 
+powerReduction_table = "6.2.3 Maximum Power Reduction"
+additionalMax_table = "6.2.4 Additional Maximum Power Reduction" 
 long_file = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/22k.pdf"
 med_file = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/4436pages.pdf"
 shortFile = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/6.6.2.3 500 pages.pdf"
@@ -506,15 +552,22 @@ pdf_file = file_55c
 
 # pdf_file = select_file()
 if __name__ == '__main__':
-    target_table = maximum_table
-    
     multiprocessing.freeze_support()  # Only required if you plan to build an executable. Can be removed otherwise.
+    
+    #SET UP TARGET TABLE:
+    target_table = additionalMax_table
     
     #User select multiple files:
     root = tk.Tk()
     root.withdraw()
     filepaths = filedialog.askopenfilenames()
-       
+    
+    #print each selected file in a new line:
+    print("Selected files:")
+    for file in filepaths:
+        print(file)
+    
+    
     # Usage:
     if len(filepaths) == 1:
         # Single file selected
@@ -525,15 +578,19 @@ if __name__ == '__main__':
         # Multiple files selected
         all_tables = []
         for filepath in filepaths:
-            df = run(filepaths[0], target_table)
+            #print process file out of total files:
+            print(f"\nProcessing file: {filepaths.index(filepath) + 1} out of {len(filepaths)}")
+            print(f"File path: {filepath}")
+            df = run(filepath, target_table)
             all_tables.append(df)  # Appending `df` instead of `tables`
         
         # Concatenate results:
         final_df = pd.concat(all_tables, ignore_index=True)
      
     # Save to Excel
-    excel_file = "Final_Table_{target_table}.xlsx"
+    excel_file = f"Final_{target_table}.xlsx"
     final_df.to_excel(excel_file, index=False)  
+    print(f"Exported to Final Excel file: {excel_file}")
     
     # Open file
     if platform.system() == 'Windows':
