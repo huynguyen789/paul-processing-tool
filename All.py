@@ -161,7 +161,10 @@ def find_and_concat_target_table(tables, desired_name):
 
     #Run through table_list
     for table in tables:
-
+        #If table is empty, skip:
+        if table.df.empty:
+            continue
+        
         first_cell = table.df.iloc[0,0].split('\n')[0]
         # print(f"\nChecking table: {first_cell}")
         first_row = table.df.iloc[0]
