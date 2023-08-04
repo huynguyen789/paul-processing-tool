@@ -18,6 +18,83 @@ from functools import partial
 from tkinter import simpledialog, messagebox, Checkbutton, IntVar,Listbox, Scrollbar, END
 from datetime import datetime
 
+def select_files_and_tables():
+    # Add a GUI file picker
+    root = tk.Tk()
+    root.withdraw()
+
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+
+    # Set the window size
+    window_width = 500  
+    window_height = 300  
+
+    # Calculate the position to center the window
+    position_top = int(screen_height / 2 - window_height / 2)
+    position_left = int(screen_width / 2 - window_width / 2)
+
+    # Set the initial size and position of the window
+    root.geometry(f'{window_width}x{window_height}+{position_left}+{position_top}')
+
+    # User selects files
+    file_paths = filedialog.askopenfilenames()
+
+    # User selects target tables
+    target_tables = [
+        "6.2.2 Maximum Output Power",
+        "6.6.2.3 Adjacent Channel Leakage Power Ratio",
+        "6.2.3 Maximum Power Reduction"
+    ]
+
+    # Create Listbox for selecting tables
+    root.deiconify()  # Show the root window
+    root.title("Select target tables")
+    listbox = Listbox(root, selectmode="multiple", exportselection=0, width=50)
+    for table in target_tables:
+        listbox.insert(END, table)
+    listbox.pack()
+    
+    # Bring the window to the front and give it focus
+    root.lift()
+    root.focus_force()
+    
+    # Add scrollbar
+    scrollbar = Scrollbar(root)
+    scrollbar.pack(side="right", fill="y")
+    listbox.config(yscrollcommand=scrollbar.set)
+    scrollbar.config(command=listbox.yview)
+
+    # Define selected_tables variable
+    selected_tables = []
+
+    # Function to be called when the 'Submit' button is clicked
+    def submit_and_close():
+        nonlocal selected_tables
+        selected_indices = listbox.curselection()
+        selected_tables = [listbox.get(i) for i in selected_indices]
+        root.quit()
+        root.destroy()
+
+    # Add submit button
+    submit_button = tk.Button(root, text='Submit', command=submit_and_close)
+    submit_button.pack()
+
+    root.mainloop()
+
+    # User specifies output file name
+    filename = simpledialog.askstring("Output Filename", "Enter output filename without extension. Or leave empty will auto naming.", initialvalue="")
+    if filename == "" or filename is None:  # If user closes the dialog box or leave it empty, the filename is set to the first number in the table name and the current time
+        # Get the first number in each selected table name
+        table_numbers = [table.split(' ')[0] for table in selected_tables]
+        # Join the table numbers with an underscore
+        table_numbers_string = '_'.join(table_numbers)        
+        current_time = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')  # This formats the current time as 'YYYYMMDDHHMMSS'
+        filename = f"{table_numbers_string}_{current_time}"
+        filename = filename.replace(':', '_')
+
+    return file_paths, selected_tables, filename
+
 def read_pdf(file_path):
     # Read the PDF file using Camelot
     print(f"Start reading PDF file {file_path}...")
@@ -400,7 +477,6 @@ def handle_special_case(current_table):
 
     return current_table
 
-
 def concatenate_tables(clean_tables, target_table, pdf_file):
     # Concatenate all the dataframes in the list into a single dataframe
     # Extract name without extension
@@ -445,7 +521,6 @@ def concatenate_tables(clean_tables, target_table, pdf_file):
 
         return all_tables
 
-    
 def process_page_range(pdf_file, target_table, page_range):
     print(f"Page range: {page_range}")
     # Read all tables from pdf
@@ -477,10 +552,17 @@ def process_page_range(pdf_file, target_table, page_range):
         
     return processed_table_df
 
-def run(pdf_file, target_table):
-    start_time = time.time()
-    ranges_text_file = f"{pdf_file}_{target_table}.txt"
-    
+def load_or_create_ranges(pdf_file, target_table):
+    # ensure the 'text_files' directory exists
+    if not os.path.exists('text_files'):
+        os.makedirs('text_files')
+
+    # get the file name without directory
+    file_name = os.path.basename(pdf_file)
+
+    # name of the file inside the 'text_files' directory
+    ranges_text_file = os.path.join('text_files', f"{file_name}_{target_table}.txt")
+
     # Check if page range text file exists:
     if os.path.exists(ranges_text_file):
         print(f"Check and load page ranges from text file: {ranges_text_file}")
@@ -499,11 +581,19 @@ def run(pdf_file, target_table):
             file.write(str(page_ranges))
         print(f"Saved page ranges to text file: {ranges_text_file}")
         
+    return page_ranges
+
+def run(pdf_file, target_table):
+    start_time = time.time()
+    
+    page_ranges = load_or_create_ranges(pdf_file, target_table)
+
     # print(page_ranges)
     # print(f"Found {len(page_ranges)} tables")
-    
+    print(f"Start multi processing with cpu count: {multiprocessing.cpu_count()}")
     # Use a pool of worker processes
     with Pool(multiprocessing.cpu_count()) as p:
+        
         # Use the partial function to make a new function that has the same parameters
         # as process_page_range but with pdf_file and target_table set as default parameters
         func = partial(process_page_range, pdf_file, target_table)
@@ -520,73 +610,16 @@ def run(pdf_file, target_table):
     
     return final_df
 
-def select_files_and_tables():
-    # Add a GUI file picker
-    root = tk.Tk()
-    root.withdraw()
 
-    # User selects files
-    file_paths = filedialog.askopenfilenames()
+def save_and_open_excel(df, filename):
+    # Ensure the 'excel' directory exists
+    if not os.path.exists('excel'):
+        os.makedirs('excel')
 
-    # User selects target tables
-    target_tables = [
-        "6.2.2 Maximum Output Power",
-        "6.6.2.3 Adjacent Channel Leakage Power Ratio",
-        "6.2.3 Maximum Power Reduction"
-    ]
-
-    # Create Listbox for selecting tables
-    root.deiconify()  # Show the root window
-    root.title("Select target tables")
-    listbox = Listbox(root, selectmode="multiple", exportselection=0)
-    for table in target_tables:
-        listbox.insert(END, table)
-    listbox.pack()
-    
-    # Bring the window to the front and give it focus
-    root.lift()
-    root.focus_force()
-    
-    # Add scrollbar
-    scrollbar = Scrollbar(root)
-    scrollbar.pack(side="right", fill="y")
-    listbox.config(yscrollcommand=scrollbar.set)
-    scrollbar.config(command=listbox.yview)
-
-    # Define selected_tables variable
-    selected_tables = []
-
-    # Function to be called when the 'Submit' button is clicked
-    def submit_and_close():
-        nonlocal selected_tables
-        selected_indices = listbox.curselection()
-        selected_tables = [listbox.get(i) for i in selected_indices]
-        root.quit()
-        root.destroy()
-
-    # Add submit button
-    submit_button = tk.Button(root, text='Submit', command=submit_and_close)
-    submit_button.pack()
-
-    root.mainloop()
-
-    # User specifies output file name
-    filename = simpledialog.askstring("Output Filename", "Enter output filename without extension. Or leave empty will auto naming.", initialvalue="")
-    if filename == "" or filename is None:  # If user closes the dialog box or leave it empty, the filename is set to the first number in the table name and the current time
-        # Get the first number in each selected table name
-        table_numbers = [table.split(' ')[0] for table in selected_tables]
-        # Join the table numbers with an underscore
-        table_numbers_string = '_'.join(table_numbers)        # Get the current time
-        current_time = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')  # This formats the current time as 'YYYYMMDDHHMMSS'
-        filename = f"{table_numbers}_{current_time}"
-
-    return file_paths, selected_tables, filename
-
-def save_and_open_excel(df,filename):
     # Save to Excel
-    excel_file = f"{filename}.xlsx"
+    excel_file = os.path.join('excel', f"{filename}.xlsx")
     df.to_excel(excel_file, index=False)  
-    print(f"Exported to Final Excel file: {excel_file}")
+    print(f"Exported to Final Excel file: {os.path.abspath(excel_file)}")
     
     # Open file
     if platform.system() == 'Windows':
@@ -594,30 +627,8 @@ def save_and_open_excel(df,filename):
     elif platform.system() == 'Darwin':
         subprocess.Popen(['open', excel_file])
     else:
-        subprocess.Popen(['xdg-open', excel_file])    
+        subprocess.Popen(['xdg-open', excel_file])
 
-
-      
-
-#options
-# additionalMax_table = "6.2.4 Additional Maximum Power Reduction" 
-# long_file = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/22k.pdf"
-# med_file = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/4436pages.pdf"
-# shortFile = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/6.6.2.3 500 pages.pdf"
-# file_55c = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/LTE_3GPP_v15_r8_FDD_FORD_All_TEMPS_TCU2_5_ROW_012023_5GSIM_AT_2023-06-28_16-27-57_188_TEMPHERE55C.pdf"
-# file_75c = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/LTE_3GPP_v15_r8_FDD_FORD_All_TEMPS_TCU2_5_ROW_012023_5GSIM_AT_2023-06-28_16-27-57_188_TEMPHERE75C.pdf"
-# #Set up
-# target_table = maximum_table
-# new25c = "/Users/huyknguyen/Desktop/paul-processing-tool/pdf/LTE_3GPP_v15_r8_FDD_FORD_All_TEMPS_TCU2_5_ROW_012023_5GSIM_AT_2023-06-28_16-27-57_188_TEMP25C.pdf"
-# pdf_file = file_55c
-
-
-
-# # Define target tables
-# maximum_table = "6.2.2 Maximum Output Power" 
-# adjacent_table = "6.6.2.3 Adjacent Channel Leakage Power Ratio" 
-# powerReduction_table = "6.2.3 Maximum Power Reduction"
-# target_tables = [maximum_table, adjacent_table, powerReduction_table]
 
 
 if __name__ == '__main__':
